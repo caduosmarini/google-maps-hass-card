@@ -303,6 +303,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         rotation,
       };
 
+      const markerTitle = this._getEntityDisplayName(entityConfig, entity);
+
       if (!marker) {
         const icon = {
           url: entityConfig.image || entity.attributes.entity_picture || "",
@@ -313,14 +315,14 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         marker = new google.maps.Marker({
           position: location,
           map: this._map,
-          title: entity.attributes.friendly_name,
+          title: markerTitle,
           icon: icon,
         });
 
         this.markers[entityConfig.entity] = marker;
       } else {
         marker.setPosition(location);
-        marker.setTitle(entity.attributes.friendly_name);
+        marker.setTitle(markerTitle);
       }
 
       // Remove existing InfoBox if it exists
@@ -445,7 +447,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         return;
       }
       const entityState = this._hass?.states?.[entityConfig.entity];
-      const entityLabel = entityState?.attributes?.friendly_name || entityConfig.entity;
+      const entityLabel = this._getEntityDisplayName(entityConfig, entityState);
       const entityToggle = document.createElement("label");
       entityToggle.className = "entity-toggle";
       const entityCheckbox = document.createElement("input");
@@ -471,6 +473,13 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     if (rotation >= -112.5 && rotation < -67.5) return "&darr;";
     if (rotation >= -67.5 && rotation < -22.5) return "&searr;";
     return "&bull;"; // Default to dot
+  }
+
+  _getEntityDisplayName(entityConfig, entityState) {
+    if (entityConfig.name) {
+      return entityConfig.name;
+    }
+    return entityState?.attributes?.friendly_name || entityConfig.entity;
   }
 
   _getInfoBoxText(entityConfig) {
@@ -578,6 +587,11 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
                 label: "Entidade",
                 required: true,
                 selector: { entity: {} },
+              },
+              {
+                name: "name",
+                label: "Nome personalizado (opcional)",
+                selector: { text: {} },
               },
               {
                 name: "condition",
