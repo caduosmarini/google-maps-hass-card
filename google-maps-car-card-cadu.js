@@ -9,44 +9,65 @@ const ENTITY_FIELD_ORDER = [
 
 function normalizeEntityConfig(entityConfig) {
   if (!entityConfig || typeof entityConfig !== "object" || Array.isArray(entityConfig)) {
-    return entityConfig;
+    return {
+      entity: "",
+      name: "",
+      image: "",
+      velocidade: "",
+      altitude: "",
+      condition: "",
+    };
   }
   
   try {
     const numericKeys = Object.keys(entityConfig).filter((key) => /^\d+$/.test(key));
-    if (numericKeys.length === 0) {
-      return entityConfig;
-    }
     
     // Criar novo objeto normalizado, preservando campos nomeados existentes
-    const normalized = {};
+    const normalized = {
+      entity: entityConfig.entity || "",
+      name: entityConfig.name || "",
+      image: entityConfig.image || "",
+      velocidade: entityConfig.velocidade || "",
+      altitude: entityConfig.altitude || "",
+      condition: entityConfig.condition || "",
+    };
     
-    // Primeiro, copiar campos nomeados existentes
+    // Preservar outros campos que possam existir
     Object.keys(entityConfig).forEach((key) => {
-      if (!/^\d+$/.test(key)) {
+      if (!/^\d+$/.test(key) && normalized[key] === undefined) {
         normalized[key] = entityConfig[key];
       }
     });
     
-    // Depois, converter chaves numéricas para campos nomeados
-    numericKeys.forEach((key) => {
-      const index = Number(key);
-      if (isNaN(index) || index < 0 || index >= ENTITY_FIELD_ORDER.length) {
-        return;
-      }
-      const fieldName = ENTITY_FIELD_ORDER[index];
-      if (fieldName) {
-        // Só sobrescreve se o campo nomeado não existir ou estiver vazio
-        if (normalized[fieldName] === undefined || normalized[fieldName] === null || normalized[fieldName] === "") {
-          normalized[fieldName] = entityConfig[key];
+    // Converter chaves numéricas para campos nomeados
+    if (numericKeys.length > 0) {
+      numericKeys.forEach((key) => {
+        const index = Number(key);
+        if (isNaN(index) || index < 0 || index >= ENTITY_FIELD_ORDER.length) {
+          return;
         }
-      }
-    });
+        const fieldName = ENTITY_FIELD_ORDER[index];
+        if (fieldName) {
+          // Só sobrescreve se o campo nomeado estiver vazio
+          if (normalized[fieldName] === "" && entityConfig[key]) {
+            normalized[fieldName] = entityConfig[key];
+          }
+        }
+      });
+    }
     
     return normalized;
   } catch (error) {
     console.error("Erro ao normalizar entidade:", error, entityConfig);
-    return entityConfig;
+    return {
+      entity: entityConfig.entity || "",
+      name: entityConfig.name || "",
+      image: entityConfig.image || "",
+      velocidade: entityConfig.velocidade || "",
+      altitude: entityConfig.altitude || "",
+      condition: entityConfig.condition || "",
+      ...entityConfig
+    };
   }
 }
 
@@ -172,30 +193,66 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entities || !config.api_key) {
-      throw new Error("Configuracao invalida");
-    }
-    this._config = {
-      ...config,
-      entities: normalizeEntitiesConfig(config.entities),
-      transito: typeof config.transito === "string" ? config.transito : null,
-      modo_noturno: typeof config.modo_noturno === "string" ? config.modo_noturno : null,
-      follow_entity:
-        typeof config.follow_entity === "string" ? config.follow_entity : null,
-    };
-    this._uiState.trafficEnabled = false;
-    this._uiState.nightModeEnabled = false;
-    this._uiState.followEnabled = false;
-    this._initializeEntityVisibility();
-    if (!window.google || !window.google.maps) {
-      const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${this._config.api_key}`;
-      script.onload = () => {
-        this._initializeMap();
+    try {
+      // Normalizar configuração ao receber ANTES de armazenar
+      const normalized = this._normalizeConfig(config || {});
+      this._config = normalized;
+      
+      if (!this._config.entities || !this._config.api_key) {
+        // Permitir configuração incompleta durante edição, mas logar aviso
+        console.warn("Configuracao incompleta: api_key ou entities ausentes");
+      }
+      
+      this._config = {
+        ...this._config,
+        transito: typeof this._config.transito === "string" ? this._config.transito : null,
+        modo_noturno: typeof this._config.modo_noturno === "string" ? this._config.modo_noturno : null,
+        follow_entity:
+          typeof this._config.follow_entity === "string" ? this._config.follow_entity : null,
       };
-      document.head.appendChild(script);
-    } else {
-      this._initializeMap();
+      this._uiState.trafficEnabled = false;
+      this._uiState.nightModeEnabled = false;
+      this._uiState.followEnabled = false;
+      this._initializeEntityVisibility();
+      
+      if (!this._config.api_key) {
+        this.mapContainer.innerHTML = '<div style="padding: 20px; color: white;">Configure a API Key do Google Maps</div>';
+        return;
+      }
+      
+      if (!window.google || !window.google.maps) {
+        const script = document.createElement("script");
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${this._config.api_key}`;
+        script.onload = () => {
+          this._initializeMap();
+        };
+        document.head.appendChild(script);
+      } else {
+        this._initializeMap();
+      }
+    } catch (error) {
+      console.error("Erro ao definir configuração no card:", error);
+    }
+  }
+  
+  _normalizeConfig(config) {
+    // Mesma lógica de normalização usada no editor
+    if (!config || typeof config !== "object") {
+      return { 
+        api_key: "",
+        follow_entity: "",
+        entities: []
+      };
+    }
+    try {
+      const normalizedEntities = normalizeEntitiesConfig(config.entities || []);
+      const normalized = {
+        ...config,
+        entities: normalizedEntities,
+      };
+      return normalized;
+    } catch (error) {
+      return config;
     }
   }
 
@@ -204,6 +261,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _initializeMap() {
+    if (!this.mapContainer) return;
+    
     this._map = new google.maps.Map(this.mapContainer, {
       center: { lat: -30.0277, lng: -51.2287 }, // Exemplo inicial, sera ajustado
       zoom: 17, // Zoom inicial
@@ -212,9 +271,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     this._applyNightMode();
     this._renderControls();
 
-    this._config.entities.forEach((entityConfig) => {
-      this._addOrUpdateMarker(entityConfig);
-    });
+    if (this._config.entities) {
+      this._config.entities.forEach((entityConfig) => {
+        this._addOrUpdateMarker(entityConfig);
+      });
+    }
 
     if (this._shouldFollow()) {
       this._fitMapBounds();
@@ -225,6 +286,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _updateMap() {
+    if (!this._config.entities) return;
+    
     this._config.entities.forEach((entityConfig) => {
       this._addOrUpdateMarker(entityConfig);
     });
@@ -243,6 +306,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _applyNightMode() {
+    if (!this._map) return;
+    
     const nightModeStyle = [
       { elementType: "geometry", stylers: [{ color: "#212121" }] },
       { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
@@ -321,6 +386,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _toggleTrafficLayer() {
+    if (!this.trafficLayer) return;
+    
     const configTraffic = this._config.transito;
     const trafficEnabled =
       typeof configTraffic === "string"
@@ -334,6 +401,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _addOrUpdateMarker(entityConfig) {
+    if (!this._hass || !this._hass.states) return;
+    
     const entity = this._hass.states[entityConfig.entity];
     const condition = entityConfig.condition
       ? this._hass.states[entityConfig.condition]
@@ -341,7 +410,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     const conditionMet = entityConfig.condition
       ? condition && condition.state === "on"
       : this._uiState.entityVisibility[entityConfig.entity] !== false;
+      
     if (entity && entity.state !== "unavailable" && conditionMet) {
+      // Verificar se tem coordenadas
+      if (!entity.attributes.latitude || !entity.attributes.longitude) return;
+      
       const location = new google.maps.LatLng(
         entity.attributes.latitude,
         entity.attributes.longitude
@@ -467,6 +540,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _renderControls() {
+    if (!this.controlsContainer) return;
     this.controlsContainer.innerHTML = "";
 
     const hasUiTraffic = !this._config.transito || typeof this._config.transito !== "string";
@@ -519,25 +593,27 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       this.controlsContainer.appendChild(followLabel);
     }
 
-    this._config.entities.forEach((entityConfig) => {
-      if (entityConfig.condition) {
-        return;
-      }
-      const entityState = this._hass?.states?.[entityConfig.entity];
-      const entityLabel = this._getEntityDisplayName(entityConfig, entityState);
-      const entityToggle = document.createElement("label");
-      entityToggle.className = "entity-toggle";
-      const entityCheckbox = document.createElement("input");
-      entityCheckbox.type = "checkbox";
-      entityCheckbox.checked = this._uiState.entityVisibility[entityConfig.entity] !== false;
-      entityCheckbox.addEventListener("change", () => {
-        this._uiState.entityVisibility[entityConfig.entity] = entityCheckbox.checked;
-        this._addOrUpdateMarker(entityConfig);
+    if (this._config.entities) {
+      this._config.entities.forEach((entityConfig) => {
+        if (entityConfig.condition) {
+          return;
+        }
+        const entityState = this._hass?.states?.[entityConfig.entity];
+        const entityLabel = this._getEntityDisplayName(entityConfig, entityState);
+        const entityToggle = document.createElement("label");
+        entityToggle.className = "entity-toggle";
+        const entityCheckbox = document.createElement("input");
+        entityCheckbox.type = "checkbox";
+        entityCheckbox.checked = this._uiState.entityVisibility[entityConfig.entity] !== false;
+        entityCheckbox.addEventListener("change", () => {
+          this._uiState.entityVisibility[entityConfig.entity] = entityCheckbox.checked;
+          this._addOrUpdateMarker(entityConfig);
+        });
+        entityToggle.appendChild(entityCheckbox);
+        entityToggle.appendChild(document.createTextNode(entityLabel));
+        this.controlsContainer.appendChild(entityToggle);
       });
-      entityToggle.appendChild(entityCheckbox);
-      entityToggle.appendChild(document.createTextNode(entityLabel));
-      this.controlsContainer.appendChild(entityToggle);
-    });
+    }
   }
 
   _getArrowFromRotation(rotation) {
@@ -562,11 +638,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   _getInfoBoxText(entityConfig) {
     let infoBoxText = "";
 
-    if (entityConfig.velocidade && this._hass.states[entityConfig.velocidade]) {
+    if (entityConfig.velocidade && this._hass && this._hass.states[entityConfig.velocidade]) {
       const speed = parseFloat(this._hass.states[entityConfig.velocidade].state).toFixed(0);
       infoBoxText += `<div class="velocidade"> ${speed} km/h</div>`;
     }
-    if (entityConfig.altitude && this._hass.states[entityConfig.altitude]) {
+    if (entityConfig.altitude && this._hass && this._hass.states[entityConfig.altitude]) {
       const altitude = parseFloat(this._hass.states[entityConfig.altitude].state).toFixed(0);
       infoBoxText += `<div class="altitude"> &#9650; ${altitude} m</div>`;
     }
@@ -575,6 +651,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _fitMapBounds() {
+    if (!this._map || !this.markers || Object.keys(this.markers).length === 0) return;
+    
     const bounds = new google.maps.LatLngBounds();
     Object.values(this.markers).forEach((marker) => {
       bounds.extend(marker.getPosition());
@@ -655,6 +733,13 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
       console.error("Erro ao criar cópia dos dados:", error);
       formData = { ...normalizedConfig };
     }
+    
+    // Garantir que todos os campos esperados existam
+    formData.api_key = formData.api_key || "";
+    formData.follow_entity = formData.follow_entity || "";
+    formData.modo_noturno = formData.modo_noturno || "";
+    formData.transito = formData.transito || "";
+    formData.entities = formData.entities || [];
     
     form.schema = this._buildSchema();
     form.computeLabel = (schema) => schema.label || schema.name;
