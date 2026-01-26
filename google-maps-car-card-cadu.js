@@ -183,6 +183,48 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     };
   }
 
+  _getStorageKey() {
+    // Gera uma chave única baseada na configuração do card
+    // Usa as entidades para criar uma chave única por instância do card
+    if (!this._config || !this._config.entities) {
+      return "google-maps-car-card-cadu-default";
+    }
+    const entityIds = this._config.entities
+      .map((e) => e.entity)
+      .sort()
+      .join(",");
+    return `google-maps-car-card-cadu-${entityIds}`;
+  }
+
+  _loadUIState() {
+    try {
+      const storageKey = this._getStorageKey();
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === "object") {
+          this._uiState = {
+            trafficEnabled: parsed.trafficEnabled === true,
+            nightModeEnabled: parsed.nightModeEnabled === true,
+            followEnabled: parsed.followEnabled === true,
+            entityVisibility: parsed.entityVisibility || {},
+          };
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao carregar estado do UI do localStorage:", error);
+    }
+  }
+
+  _saveUIState() {
+    try {
+      const storageKey = this._getStorageKey();
+      localStorage.setItem(storageKey, JSON.stringify(this._uiState));
+    } catch (error) {
+      console.error("Erro ao salvar estado do UI no localStorage:", error);
+    }
+  }
+
   set hass(hass) {
     this._hass = hass;
     if (this._map && this._config) {
@@ -210,10 +252,28 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         follow_entity:
           typeof this._config.follow_entity === "string" ? this._config.follow_entity : null,
       };
-      this._uiState.trafficEnabled = false;
-      this._uiState.nightModeEnabled = false;
-      this._uiState.followEnabled = false;
+      
+      // Carregar estado salvo do localStorage antes de inicializar valores padrão
+      this._loadUIState();
+      
+      // Inicializar valores padrão apenas se não existirem no estado carregado
+      if (this._uiState.trafficEnabled === undefined) {
+        this._uiState.trafficEnabled = false;
+      }
+      if (this._uiState.nightModeEnabled === undefined) {
+        this._uiState.nightModeEnabled = false;
+      }
+      if (this._uiState.followEnabled === undefined) {
+        this._uiState.followEnabled = false;
+      }
       this._initializeEntityVisibility();
+      
+      // Se o mapa já existe, atualizar os controles com os valores carregados
+      if (this._map && this.controlsContainer) {
+        this._renderControls();
+        this._applyNightMode();
+        this._toggleTrafficLayer();
+      }
       
       if (!this._config.api_key) {
         this.mapContainer.innerHTML = '<div style="padding: 20px; color: white;">Configure a API Key do Google Maps</div>';
@@ -556,6 +616,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       trafficCheckbox.checked = this._uiState.trafficEnabled;
       trafficCheckbox.addEventListener("change", () => {
         this._uiState.trafficEnabled = trafficCheckbox.checked;
+        this._saveUIState();
         this._toggleTrafficLayer();
       });
       trafficLabel.appendChild(trafficCheckbox);
@@ -570,6 +631,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       nightCheckbox.checked = this._uiState.nightModeEnabled;
       nightCheckbox.addEventListener("change", () => {
         this._uiState.nightModeEnabled = nightCheckbox.checked;
+        this._saveUIState();
         this._applyNightMode();
       });
       nightLabel.appendChild(nightCheckbox);
@@ -584,6 +646,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       followCheckbox.checked = this._uiState.followEnabled;
       followCheckbox.addEventListener("change", () => {
         this._uiState.followEnabled = followCheckbox.checked;
+        this._saveUIState();
         if (this._shouldFollow()) {
           this._fitMapBounds();
         }
@@ -607,6 +670,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         entityCheckbox.checked = this._uiState.entityVisibility[entityConfig.entity] !== false;
         entityCheckbox.addEventListener("change", () => {
           this._uiState.entityVisibility[entityConfig.entity] = entityCheckbox.checked;
+          this._saveUIState();
           this._addOrUpdateMarker(entityConfig);
         });
         entityToggle.appendChild(entityCheckbox);
@@ -828,39 +892,34 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         selector: {
           object: {
             multiple: true,
-            fields: [
-              {
-                name: "entity",
+            label_field: "entity",
+            fields: {
+              entity: {
                 label: "Entidade",
                 required: true,
                 selector: { entity: {} },
               },
-              {
-                name: "name",
+              name: {
                 label: "Nome personalizado (opcional)",
                 selector: { text: {} },
               },
-              {
-                name: "image",
+              image: {
                 label: "Imagem (opcional)",
                 selector: { text: {} },
               },
-              {
-                name: "velocidade",
+              velocidade: {
                 label: "Sensor de velocidade (opcional)",
                 selector: { entity: {} },
               },
-              {
-                name: "altitude",
+              altitude: {
                 label: "Sensor de altitude (opcional)",
                 selector: { entity: {} },
               },
-              {
-                name: "condition",
+              condition: {
                 label: "Condicao (opcional)",
                 selector: { entity: { domain: "input_boolean" } },
               },
-            ],
+            },
           },
         },
       },
