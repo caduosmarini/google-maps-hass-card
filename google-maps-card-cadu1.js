@@ -4,6 +4,10 @@ class GoogleMapsCardCadu1 extends HTMLElement {
     this.attachShadow({ mode: "open" });
     const style = document.createElement("style");
     style.textContent = `
+      :host {
+        display: block;
+        position: relative;
+      }
       #map {
         width: 100%;
         height: 450px; /* Padrao para dispositivos moveis */
@@ -38,14 +42,47 @@ class GoogleMapsCardCadu1 extends HTMLElement {
       .info-box .altitude {
         font-size: 12px;
       }
+      .map-controls {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        padding: 8px;
+        border-radius: 6px;
+        font-size: 12px;
+        z-index: 2;
+      }
+      .map-controls label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+      }
+      .map-controls .entity-toggle {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
     `;
     this.shadowRoot.appendChild(style);
     this.mapContainer = document.createElement("div");
     this.mapContainer.id = "map";
     this.shadowRoot.appendChild(this.mapContainer);
+    this.controlsContainer = document.createElement("div");
+    this.controlsContainer.className = "map-controls";
+    this.shadowRoot.appendChild(this.controlsContainer);
     this.markers = {}; // Armazena marcadores por entidade
     this.infoBoxes = {}; // Armazena InfoBoxes por entidade
     this.lastPositions = {}; // Armazena a ultima posicao de cada entidade
+    this._uiState = {
+      trafficEnabled: false,
+      nightModeEnabled: false,
+      entityVisibility: {},
+    };
   }
 
   set hass(hass) {
@@ -58,16 +95,17 @@ class GoogleMapsCardCadu1 extends HTMLElement {
   }
 
   setConfig(config) {
-    if (
-      !config.entities ||
-      !config.api_key ||
-      !config.follow_entity ||
-      !config.modo_noturno ||
-      !config.transito
-    ) {
+    if (!config.entities || !config.api_key || !config.follow_entity) {
       throw new Error("Configuracao invalida");
     }
-    this._config = config;
+    this._config = {
+      ...config,
+      transito: typeof config.transito === "string" ? config.transito : null,
+      modo_noturno: typeof config.modo_noturno === "string" ? config.modo_noturno : null,
+    };
+    this._uiState.trafficEnabled = false;
+    this._uiState.nightModeEnabled = false;
+    this._initializeEntityVisibility();
     if (!window.google || !window.google.maps) {
       const script = document.createElement("script");
       script.src = `https://maps.googleapis.com/maps/api/js?key=${this._config.api_key}`;
@@ -91,6 +129,7 @@ class GoogleMapsCardCadu1 extends HTMLElement {
       streetViewControl: false, // Desabilita o controle de Street View
     });
     this._applyNightMode();
+    this._renderControls();
 
     this._config.entities.forEach((entityConfig) => {
       this._addOrUpdateMarker(entityConfig);
@@ -187,14 +226,22 @@ class GoogleMapsCardCadu1 extends HTMLElement {
       { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#3d3d3d" }] },
     ];
 
-    const nightMode = this._hass.states[this._config.modo_noturno].state === "on";
+    const configNightMode = this._config.modo_noturno;
+    const nightMode =
+      typeof configNightMode === "string"
+        ? this._hass.states[configNightMode]?.state === "on"
+        : this._uiState.nightModeEnabled;
     this._map.setOptions({
       styles: nightMode ? nightModeStyle : [],
     });
   }
 
   _toggleTrafficLayer() {
-    const trafficEnabled = this._hass.states[this._config.transito].state === "on";
+    const configTraffic = this._config.transito;
+    const trafficEnabled =
+      typeof configTraffic === "string"
+        ? this._hass.states[configTraffic]?.state === "on"
+        : this._uiState.trafficEnabled;
     if (trafficEnabled) {
       this.trafficLayer.setMap(this._map);
     } else {
@@ -204,8 +251,13 @@ class GoogleMapsCardCadu1 extends HTMLElement {
 
   _addOrUpdateMarker(entityConfig) {
     const entity = this._hass.states[entityConfig.entity];
-    const condition = this._hass.states[entityConfig.condition];
-    if (entity && entity.state !== "unavailable" && condition && condition.state === "on") {
+    const condition = entityConfig.condition
+      ? this._hass.states[entityConfig.condition]
+      : null;
+    const conditionMet = entityConfig.condition
+      ? condition && condition.state === "on"
+      : this._uiState.entityVisibility[entityConfig.entity] !== false;
+    if (entity && entity.state !== "unavailable" && conditionMet) {
       const location = new google.maps.LatLng(
         entity.attributes.latitude,
         entity.attributes.longitude
@@ -220,7 +272,10 @@ class GoogleMapsCardCadu1 extends HTMLElement {
       let deltaX = 0;
       let deltaY = 0;
 
-      const speed = parseFloat(this._hass.states[entityConfig.velocidade].state).toFixed(0);
+      const speed =
+        entityConfig.velocidade && this._hass.states[entityConfig.velocidade]
+          ? parseFloat(this._hass.states[entityConfig.velocidade].state).toFixed(0)
+          : 0;
 
       if (lastPosition) {
         deltaX = location.lng() - lastPosition.lng;
@@ -243,7 +298,7 @@ class GoogleMapsCardCadu1 extends HTMLElement {
 
       if (!marker) {
         const icon = {
-          url: entity.attributes.entity_picture || "",
+          url: entityConfig.image || entity.attributes.entity_picture || "",
           scaledSize: new google.maps.Size(60, 60),
           anchor: new google.maps.Point(30, 30),
         };
@@ -312,6 +367,73 @@ class GoogleMapsCardCadu1 extends HTMLElement {
         delete this.infoBoxes[entityConfig.entity];
       }
     }
+  }
+
+  _initializeEntityVisibility() {
+    if (!this._config || !this._config.entities) {
+      return;
+    }
+    this._config.entities.forEach((entityConfig) => {
+      if (!(entityConfig.entity in this._uiState.entityVisibility)) {
+        this._uiState.entityVisibility[entityConfig.entity] = true;
+      }
+    });
+  }
+
+  _renderControls() {
+    this.controlsContainer.innerHTML = "";
+
+    const hasUiTraffic = !this._config.transito || typeof this._config.transito !== "string";
+    const hasUiNightMode =
+      !this._config.modo_noturno || typeof this._config.modo_noturno !== "string";
+
+    if (hasUiTraffic) {
+      const trafficLabel = document.createElement("label");
+      const trafficCheckbox = document.createElement("input");
+      trafficCheckbox.type = "checkbox";
+      trafficCheckbox.checked = this._uiState.trafficEnabled;
+      trafficCheckbox.addEventListener("change", () => {
+        this._uiState.trafficEnabled = trafficCheckbox.checked;
+        this._toggleTrafficLayer();
+      });
+      trafficLabel.appendChild(trafficCheckbox);
+      trafficLabel.appendChild(document.createTextNode("Transito"));
+      this.controlsContainer.appendChild(trafficLabel);
+    }
+
+    if (hasUiNightMode) {
+      const nightLabel = document.createElement("label");
+      const nightCheckbox = document.createElement("input");
+      nightCheckbox.type = "checkbox";
+      nightCheckbox.checked = this._uiState.nightModeEnabled;
+      nightCheckbox.addEventListener("change", () => {
+        this._uiState.nightModeEnabled = nightCheckbox.checked;
+        this._applyNightMode();
+      });
+      nightLabel.appendChild(nightCheckbox);
+      nightLabel.appendChild(document.createTextNode("Modo noturno"));
+      this.controlsContainer.appendChild(nightLabel);
+    }
+
+    this._config.entities.forEach((entityConfig) => {
+      if (entityConfig.condition) {
+        return;
+      }
+      const entityState = this._hass?.states?.[entityConfig.entity];
+      const entityLabel = entityState?.attributes?.friendly_name || entityConfig.entity;
+      const entityToggle = document.createElement("label");
+      entityToggle.className = "entity-toggle";
+      const entityCheckbox = document.createElement("input");
+      entityCheckbox.type = "checkbox";
+      entityCheckbox.checked = this._uiState.entityVisibility[entityConfig.entity] !== false;
+      entityCheckbox.addEventListener("change", () => {
+        this._uiState.entityVisibility[entityConfig.entity] = entityCheckbox.checked;
+        this._addOrUpdateMarker(entityConfig);
+      });
+      entityToggle.appendChild(entityCheckbox);
+      entityToggle.appendChild(document.createTextNode(entityLabel));
+      this.controlsContainer.appendChild(entityToggle);
+    });
   }
 
   _getArrowFromRotation(rotation) {

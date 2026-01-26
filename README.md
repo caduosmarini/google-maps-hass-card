@@ -18,11 +18,9 @@ Cartao customizado do Home Assistant para exibir entidades no Google Maps com ca
 type: "custom:google-maps-card-cadu1"
 api_key: "SUA_GOOGLE_MAPS_API_KEY"
 follow_entity: input_boolean.seguir_mapa
-modo_noturno: input_boolean.modo_noturno
-transito: input_boolean.transito
 entities:
-  - entity: device_tracker.meu_dispositivo
-    condition: input_boolean.mostrar_dispositivo
+  - entity: person.meu_dispositivo
+    image: /local/imagens/carro.png
     velocidade: sensor.velocidade_dispositivo
     altitude: sensor.altitude_dispositivo
 ```
@@ -31,11 +29,12 @@ entities:
 
 - `api_key`: Chave da API do Google Maps.
 - `follow_entity`: Entidade booleana que, quando ligada, ajusta/centraliza o mapa.
-- `modo_noturno`: Entidade booleana para aplicar o estilo noturno.
-- `transito`: Entidade booleana para mostrar a camada de transito.
+- `modo_noturno`: (Opcional) Entidade booleana para aplicar o estilo noturno. Se nao definido, o cartao mostra um toggle na interface.
+- `transito`: (Opcional) Entidade booleana para mostrar a camada de transito. Se nao definido, o cartao mostra um toggle na interface.
 - `entities`: Lista de entidades para exibir.
   - `entity`: Entidade com latitude/longitude.
-  - `condition`: Entidade booleana que controla se o marcador aparece.
+  - `condition`: (Opcional) Entidade booleana que controla se o marcador aparece. Se nao definido, o cartao mostra um toggle na interface.
+  - `image`: URL/arquivo local para o icone do marcador (opcional).
   - `velocidade`: Sensor de velocidade para mostrar na caixa de info.
   - `altitude`: Sensor de altitude para mostrar na caixa de info.
 
