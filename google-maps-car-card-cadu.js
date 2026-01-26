@@ -27,6 +27,7 @@ function normalizeEntityConfig(entityConfig) {
       entity: entityConfig.entity || "",
       name: entityConfig.name || "",
       image: entityConfig.image || "",
+      image_rotated: entityConfig.image_rotated || "",
       velocidade: entityConfig.velocidade || "",
       altitude: entityConfig.altitude || "",
       condition: entityConfig.condition || "",
@@ -63,6 +64,7 @@ function normalizeEntityConfig(entityConfig) {
       entity: entityConfig.entity || "",
       name: entityConfig.name || "",
       image: entityConfig.image || "",
+      image_rotated: entityConfig.image_rotated || "",
       velocidade: entityConfig.velocidade || "",
       altitude: entityConfig.altitude || "",
       condition: entityConfig.condition || "",
@@ -106,6 +108,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       trafficEnabled: false,
       nightModeEnabled: false,
       followEnabled: false,
+      rotateImageEnabled: false,
       entityVisibility: {},
     };
     this._updateStyles();
@@ -152,6 +155,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         transform: translate(-50%, -100%);
         position: absolute;
         text-align: center;
+        /* Permitir cliques na info box se necessario */
+        pointer-events: none; 
       }
       .info-box .arrow-box {
         font-size: 15px;
@@ -224,6 +229,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
             trafficEnabled: parsed.trafficEnabled === true,
             nightModeEnabled: parsed.nightModeEnabled === true,
             followEnabled: parsed.followEnabled === true,
+            rotateImageEnabled: parsed.rotateImageEnabled === true,
             entityVisibility: parsed.entityVisibility || {},
           };
         }
@@ -283,6 +289,9 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       }
       if (this._uiState.followEnabled === undefined) {
         this._uiState.followEnabled = false;
+      }
+      if (this._uiState.rotateImageEnabled === undefined) {
+        this._uiState.rotateImageEnabled = false;
       }
       this._initializeEntityVisibility();
       
@@ -524,31 +533,41 @@ class GoogleMapsCarCardCadu extends HTMLElement {
 
       const speed =
         entityConfig.velocidade && this._hass.states[entityConfig.velocidade]
-          ? parseFloat(this._hass.states[entityConfig.velocidade].state).toFixed(0)
-          : 0;
+          ? parseFloat(this._hass.states[entityConfig.velocidade].state)
+          : null;
 
       if (lastPosition) {
-        deltaX = location.lng() - lastPosition.lng;
-        deltaY = location.lat() - lastPosition.lat;
-        // Se houver deslocamento significativo, atualiza a rotacao independente da velocidade
-        if (Math.abs(deltaX) > 0.00001 || Math.abs(deltaY) > 0.00001) {
-          rotation = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+        // Se a velocidade for explicitamente informada e <= 0, considera parado
+        const isStopped = speed !== null && !isNaN(speed) && speed <= 0.1;
+        
+        if (isStopped) {
+            rotation = 999;
         } else {
-          rotation = lastPosition.rotation;
+            deltaX = location.lng() - lastPosition.lng;
+            deltaY = location.lat() - lastPosition.lat;
+            // Se houver deslocamento significativo, atualiza a rotacao independente da velocidade
+            if (Math.abs(deltaX) > 0.00001 || Math.abs(deltaY) > 0.00001) {
+              rotation = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+            } else {
+              rotation = 999;
+            }
         }
       } else {
         rotation = 999; // Valor inicial para rotacao
       }
 
       const arrow = this._getArrowFromRotation(rotation);
+      // Se rotation for 999 (parado), mantemos a ultima rotacao valida no lastPositions para nao perder referencia se precisar?
+      // Nao, se rotation é 999, significa que queremos exibir "sem rotação".
+      
       this.lastPositions[entityConfig.entity] = {
         lat: location.lat(),
         lng: location.lng(),
-        rotation,
+        rotation: rotation === 999 && lastPosition ? lastPosition.rotation : rotation, // Preserva ultima rotacao valida apenas para calculo futuro se necessario?
       };
 
       const markerTitle = this._getEntityDisplayName(entityConfig, entity);
-      const shouldRotate = this._config.rotate_image === true;
+      const shouldRotate = this._uiState.rotateImageEnabled === true;
 
       // Handle Marker Types Swapping
       if (shouldRotate) {
@@ -565,28 +584,58 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       }
 
       if (shouldRotate) {
-        // --- Custom Overlay Implementation ---
+        // --- Standard Marker Implementation (rotated via icon) ---
         let cssRotation = 0;
         if (rotation !== 999) {
-          cssRotation = 180 - rotation;
+          cssRotation = 180 - rotation; // Assumindo imagem virada para a esquerda
         } else {
-          cssRotation = 180;
+          cssRotation = 0; // Sem rotacao
         }
 
+        const imageToUse = (rotation !== 999 && entityConfig.image_rotated)
+          ? entityConfig.image_rotated
+          : (entityConfig.image || entity.attributes.entity_picture || "");
+
         if (!marker) {
+          // Criar elemento HTML para o icone rotacionado
+          const iconUrl = imageToUse;
+          const iconElement = document.createElement("img");
+          iconElement.src = iconUrl;
+          iconElement.style.width = "60px";
+          iconElement.style.height = "60px";
+          iconElement.style.transform = `rotate(${cssRotation}deg)`;
+          
+          // Usar OverlayView para permitir rotacao CSS, mas mantendo a logica mais simples
+          // Infelizmente google.maps.Marker nao suporta rotacao de imagem diretamente, so de SVG path
+          // Entao precisamos usar OverlayView para rotacionar imagem PNG/JPG
+          // Mas o usuario pediu para "ficar o mesmo de quando n ta rotacionando" (tamanho e tal)
+          
           marker = new google.maps.OverlayView();
           marker.position = location;
           marker.rotation = cssRotation;
-          marker.imageUrl = entityConfig.image || entity.attributes.entity_picture || "";
+          marker.imageUrl = iconUrl;
           
           marker.onAdd = function() {
             const div = document.createElement("div");
             div.style.position = "absolute";
-            div.style.width = "100px";
-            div.style.height = "120px";
-            // Image 100x100 top aligned
-            div.innerHTML = `<img src="${this.imageUrl}" style="width: 100px; height: 100px; display: block;">`;
+            // Tamanho original do icone (60x60)
+            div.style.width = "60px";
+            div.style.height = "60px";
+            div.style.cursor = "pointer"; // Adicionar cursor pointer se quiser comportamento de clique
+            
+            // Imagem centralizada
+            const img = document.createElement("img");
+            img.src = this.imageUrl;
+            img.style.width = "100%";
+            img.style.height = "100%";
+            img.style.position = "absolute";
+            img.style.top = "0";
+            img.style.left = "0";
+            
+            div.appendChild(img);
             this.div_ = div;
+            this.img_ = img;
+            
             const panes = this.getPanes();
             panes.overlayLayer.appendChild(div);
           };
@@ -597,9 +646,12 @@ class GoogleMapsCarCardCadu extends HTMLElement {
             const pos = overlayProjection.fromLatLngToDivPixel(this.position);
             const div = this.div_;
             if (div) {
-              // Center the container (100x120) on the point
-              div.style.left = (pos.x - 50) + "px";
-              div.style.top = (pos.y - 60) + "px";
+              // Centralizar o container 60x60 no ponto (30, 30 de offset)
+              div.style.left = (pos.x - 30) + "px";
+              div.style.top = (pos.y - 30) + "px";
+              
+              // Rotacionar apenas a imagem interna ou o container?
+              // Se rotacionar o container, tudo gira.
               div.style.transform = `rotate(${this.rotation}deg)`;
             }
           };
@@ -611,7 +663,6 @@ class GoogleMapsCarCardCadu extends HTMLElement {
             }
           };
           
-          // Add helper for bounds
           marker.getPosition = function() {
             return this.position;
           };
@@ -623,12 +674,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
           marker.rotation = cssRotation;
           
           // Update image if changed
-          const newUrl = entityConfig.image || entity.attributes.entity_picture || "";
+          const newUrl = imageToUse;
           if (marker.imageUrl !== newUrl) {
             marker.imageUrl = newUrl;
-            if (marker.div_) {
-              const img = marker.div_.querySelector("img");
-              if (img) img.src = newUrl;
+            if (marker.img_) {
+              marker.img_.src = newUrl;
             }
           }
           
@@ -683,8 +733,68 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         const position = overlayProjection.fromLatLngToDivPixel(location);
         const div = this.div_;
         div.style.left = `${position.x}px`;
-        const yOffset = shouldRotate ? 70 : 20; // Ajustar conforme o tamanho do marcador
+        // Ajuste fixo para 20px (tamanho padrao do icone 60x60, anchor 30,30 -> topo é y-30. InfoBox translate -100% Y)
+        // Se quisermos um pouco acima do icone: y - 30 (topo do icone) - 5 (margem) = y - 35
+        // A implementacao original usava y - 20
+        const yOffset = 35; 
         div.style.top = `${position.y - yOffset}px`;
+        
+        // Se a rotacao da legenda for desejada (para acompanhar a direcao, mas "sem rotacionar ela" = ficar em pe?)
+        // O usuario disse: "a legenda pode ficar sempre pra cima do carro, tipo, rotacionar a posição da legenda tb, mas sem rotacionar ela"
+        // Isso significa que a posicao (x,y) deve girar em torno do centro do carro, mas o texto deve ficar horizontal.
+        // Se o carro gira 90 graus (para baixo), a "frente" do carro muda. Se a legenda deve ficar "pra cima do carro" (na frente do carro?), ela deve mudar de posicao.
+        // MAS, geralmente "pra cima" significa "Norte da tela" ou "Acima do icone".
+        // Se o usuario quer que a legenda acompanhe a "cabeca" do carro (frente), entao precisamos calcular a nova posicao (x,y) baseada no angulo.
+        
+        if (shouldRotate && rotation !== 999) {
+             // Raio de distancia do centro (metade do icone + margem)
+             const radius = 40; 
+             // Converter rotacao (graus) para radianos. 
+             // O carro esta rotacionado por `rotation`. A imagem original aponta para Esquerda (180 deg).
+             // Se rotation=0 (Leste), cssRotation = 180.
+             // Vamos simplificar: queremos a legenda na direcao do movimento.
+             // Rotation é o angulo do movimento (atan2 dy, dx).
+             // Mas atan2 retorna angulo trigonometrico (0 = Leste/Direita, 90 = Sul/Baixo no canvas Y?, nao, Y cresce para baixo no HTML/Canvas, mas atan2 normal é cartesiano Y pra cima)
+             // No Google Maps: Lat cresce pra cima (Norte), Lng pra direita (Leste).
+             // DeltaY = lat2 - lat1. DeltaX = lng2 - lng1.
+             // Se DeltaY > 0 (Norte), DeltaX = 0. atan2(1, 0) = PI/2 (90 graus).
+             // Se queremos a legenda "na frente", usamos esse angulo.
+             // Mas a coordenada de tela Y cresce para BAIXO.
+             // Entao um deslocamento para o Norte (Lat aumenta) significa Y diminui.
+             
+             // Vamos recalcular o angulo de tela.
+             // Ou simplesmente usar o `rotation` calculado e projetar um offset.
+             // `rotation` foi calculado com lat/lng. 
+             // Conversao simples: angulo em graus. 0 = Leste. 90 = Norte (no calculo lat/lng original).
+             // Espere, Math.atan2(y, x). Se y (lat) aumenta, é Norte.
+             
+             // Para posicionar a div na tela:
+             // x = center_x + radius * cos(angle)
+             // y = center_y - radius * sin(angle)  (menos porque Y da tela é invertido em relacao ao cartesiano)
+             
+             const rad = rotation * (Math.PI / 180);
+             const offsetX = radius * Math.cos(rad);
+             const offsetY = -radius * Math.sin(rad); // Y tela invertido
+             
+             div.style.left = `${position.x + offsetX}px`;
+             div.style.top = `${position.y + offsetY}px`;
+             
+             // Ajuste fino para centralizar a div no ponto calculado (translate -50%, -50% ao inves de -50%, -100%)
+             // O CSS atual tem transform: translate(-50%, -100%); (base-center alignment)
+             // Se a legenda esta "na frente", talvez queiramos alinhar de forma diferente dependendo do angulo, mas manter centralizado é mais seguro.
+             // Vamos manter o CSS padrao, mas ajustar o offset para compensar o translate -100% (que joga pra cima).
+             
+             // Se a legenda esta EM CIMA (Norte): offsetY negativo. translate -100% joga mais pra cima ainda. OK.
+             // Se a legenda esta EM BAIXO (Sul): offsetY positivo. translate -100% joga pra cima (em cima do ponto). Ruim.
+             // Se a legenda esta a DIREITA (Leste): offsetX positivo. translate -100% joga pra cima.
+             
+             // Melhor abordagem: posicionar no centro + vetor direcao, e remover o translate vertical fixo se possivel, ou ajustar.
+             // Como nao podemos mudar o CSS da classe facilmente dinamicamente sem afetar outros, vamos mudar o estilo inline.
+             div.style.transform = "translate(-50%, -50%)"; // Centralizar no ponto alvo
+        } else {
+             // Comportamento padrao (acima do icone)
+             div.style.transform = "translate(-50%, -100%)";
+        }
       };
       infoBox.onRemove = function () {
         this.div_.parentNode.removeChild(this.div_);
@@ -778,6 +888,24 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       followLabel.appendChild(document.createTextNode("Seguir"));
       this.controlsContainer.appendChild(followLabel);
     }
+
+    const rotateLabel = document.createElement("label");
+    const rotateCheckbox = document.createElement("input");
+    rotateCheckbox.type = "checkbox";
+    rotateCheckbox.checked = this._uiState.rotateImageEnabled;
+    rotateCheckbox.addEventListener("change", () => {
+      this._uiState.rotateImageEnabled = rotateCheckbox.checked;
+      this._saveUIState();
+      // Recarrega os marcadores para aplicar/remover rotação
+      if (this._config.entities) {
+        this._config.entities.forEach((entityConfig) => {
+          this._addOrUpdateMarker(entityConfig);
+        });
+      }
+    });
+    rotateLabel.appendChild(rotateCheckbox);
+    rotateLabel.appendChild(document.createTextNode("Rotação"));
+    this.controlsContainer.appendChild(rotateLabel);
 
     if (this._config.entities) {
       this._config.entities.forEach((entityConfig) => {
@@ -1043,11 +1171,6 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         selector: { entity: { domain: "input_boolean" } },
       },
       {
-        name: "rotate_image",
-        label: "Rotacionar imagem do carro (beta)",
-        selector: { boolean: {} },
-      },
-      {
         name: "max_height",
         label: "Altura máxima do mapa em pixels (opcional)",
         selector: { number: { min: 100, max: 2000, step: 10, unit_of_measurement: "px" } },
@@ -1076,6 +1199,10 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
               },
               image: {
                 label: "Imagem (opcional)",
+                selector: { text: {} },
+              },
+              image_rotated: {
+                label: "Imagem Rotacionada (opcional, beta)",
                 selector: { text: {} },
               },
               velocidade: {
@@ -1117,7 +1244,6 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         follow_entity: config.follow_entity || "",
         modo_noturno: config.modo_noturno || "",
         transito: config.transito || "",
-        rotate_image: config.rotate_image === true,
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: normalizedEntities,
@@ -1138,7 +1264,6 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         follow_entity: config.follow_entity || "",
         modo_noturno: config.modo_noturno || "",
         transito: config.transito || "",
-        rotate_image: config.rotate_image === true,
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: Array.isArray(config.entities) ? config.entities : [],
