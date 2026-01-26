@@ -531,28 +531,17 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       let deltaX = 0;
       let deltaY = 0;
 
-      const speed =
-        entityConfig.velocidade && this._hass.states[entityConfig.velocidade]
-          ? parseFloat(this._hass.states[entityConfig.velocidade].state)
-          : null;
-
       if (lastPosition) {
-        // Se a velocidade for explicitamente informada e <= 0, considera parado
-        const isStopped = speed !== null && !isNaN(speed) && speed <= 0.1;
+        deltaX = location.lng() - lastPosition.lng;
+        deltaY = location.lat() - lastPosition.lat;
         
-        if (isStopped) {
-            // Se parado, mantem a ultima rotacao valida se existir, senao 999
-            rotation = lastPosition.rotation !== 999 ? lastPosition.rotation : 999;
+        // Se houver deslocamento significativo no GPS, recalcula a rotacao (prioridade ao movimento real)
+        if (Math.abs(deltaX) > 0.00001 || Math.abs(deltaY) > 0.00001) {
+          rotation = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
         } else {
-            deltaX = location.lng() - lastPosition.lng;
-            deltaY = location.lat() - lastPosition.lat;
-            // Se houver deslocamento significativo, atualiza a rotacao independente da velocidade
-            if (Math.abs(deltaX) > 0.00001 || Math.abs(deltaY) > 0.00001) {
-              rotation = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
-            } else {
-              // Se nao houver deslocamento significativo mas nao esta "parado" pelo sensor, mantem ultima
-              rotation = lastPosition.rotation;
-            }
+          // Se nao houve deslocamento significativo, mantem a ultima rotacao valida
+          // Isso serve para sinaleiras (carro parado mantem a direcao)
+          rotation = lastPosition.rotation !== 999 ? lastPosition.rotation : 999;
         }
       } else {
         rotation = 999; // Valor inicial para rotacao
@@ -590,9 +579,6 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         let cssRotation = 0;
         if (rotation !== 999) {
           cssRotation = 180 - rotation; // Assumindo imagem virada para a esquerda
-        } else if (lastPosition && lastPosition.rotation !== 999) {
-           // Se rotation atual é 999 (parado), tenta usar a ultima valida para manter a orientacao
-           cssRotation = 180 - lastPosition.rotation;
         } else {
           cssRotation = 0; // Sem rotacao
         }
@@ -746,16 +732,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         // O usuario disse: "a legenda pode ficar sempre pra cima do carro, tipo, rotacionar a posição da legenda tb, mas sem rotacionar ela"
         // Isso significa que a posicao (x,y) deve girar em torno do centro do carro, mas o texto deve ficar horizontal.
         
-        let rotationToUse = rotation;
-        if (rotation === 999 && lastPosition && lastPosition.rotation !== 999) {
-            rotationToUse = lastPosition.rotation;
-        }
-
-        if (shouldRotate && rotationToUse !== 999) {
+        if (shouldRotate && rotation !== 999) {
              // Raio de distancia do centro (metade do icone + margem)
              const radius = 40; 
              
-             const rad = rotationToUse * (Math.PI / 180);
+             const rad = rotation * (Math.PI / 180);
              const offsetX = radius * Math.cos(rad);
              const offsetY = -radius * Math.sin(rad); // Y tela invertido
              
