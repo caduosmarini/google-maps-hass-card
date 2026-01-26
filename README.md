@@ -41,3 +41,9 @@ entities:
 ## Desenvolvimento
 
 O arquivo principal do cartao fica em `google-maps-car-card-cadu.js`.
+
+## Solucao de problemas
+
+- **`Google Maps JavaScript API error: BillingNotEnabledMapError`**: a chave da API existe, mas o faturamento nao esta habilitado no projeto do Google Cloud. Ative o faturamento e confirme se a API do Google Maps JavaScript esta habilitada no projeto. Sem isso o mapa mostra "For development purposes only" e nao carrega corretamente.
+- **`Esta pagina nao carregou o Google Maps corretamente`**: normalmente aparece junto com o erro acima ou quando a chave nao tem permissoes. Verifique a chave, restricoes de dominio/IP e se a API correta esta ativa.
+- **Erro 404 ao carregar recursos (`Failed to load resource: ... 404`)**: indica que um recurso externo ou de outro componente nao foi encontrado. Confirme se o caminho do recurso foi adicionado corretamente em **Configuracao > Painel > Recursos** e se o arquivo esta instalado.
