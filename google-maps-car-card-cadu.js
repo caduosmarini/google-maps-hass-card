@@ -1,4 +1,4 @@
-class GoogleMapsCardCadu1 extends HTMLElement {
+class GoogleMapsCarCardCadu extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -481,11 +481,154 @@ class GoogleMapsCardCadu1 extends HTMLElement {
   }
 }
 
-customElements.define("google-maps-card-cadu1", GoogleMapsCardCadu1);
+class GoogleMapsCarCardCaduEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._rendered) {
+      this._updateEntityPickers();
+    } else if (this._config) {
+      this._render();
+    }
+  }
+
+  _render() {
+    this._rendered = true;
+    this.innerHTML = "";
+    const container = document.createElement("div");
+    container.style.display = "grid";
+    container.style.gap = "12px";
+
+    container.appendChild(this._createTextInput("api_key", "Google Maps API Key"));
+    container.appendChild(
+      this._createEntityInput("follow_entity", "Entidade para seguir (booleana)")
+    );
+    container.appendChild(
+      this._createEntityInput("modo_noturno", "Entidade modo noturno (opcional)")
+    );
+    container.appendChild(
+      this._createEntityInput("transito", "Entidade transito (opcional)")
+    );
+
+    const entitiesLabel = document.createElement("label");
+    entitiesLabel.textContent = "Entidades (JSON)";
+    const entitiesInput = document.createElement("textarea");
+    entitiesInput.rows = 6;
+    entitiesInput.value = JSON.stringify(this._config.entities || [], null, 2);
+    entitiesInput.addEventListener("change", () => {
+      let parsed;
+      try {
+        parsed = JSON.parse(entitiesInput.value);
+      } catch (error) {
+        entitiesInput.setCustomValidity("JSON invalido");
+        entitiesInput.reportValidity();
+        return;
+      }
+      entitiesInput.setCustomValidity("");
+      this._updateConfig({ entities: parsed });
+    });
+    entitiesLabel.appendChild(entitiesInput);
+    container.appendChild(entitiesLabel);
+
+    this.appendChild(container);
+    this._updateEntityPickers();
+  }
+
+  _createTextInput(field, label) {
+    const inputLabel = document.createElement("label");
+    inputLabel.textContent = label;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = this._config[field] || "";
+    input.addEventListener("change", () => {
+      this._updateConfig({ [field]: input.value });
+    });
+    inputLabel.appendChild(input);
+    return inputLabel;
+  }
+
+  _createEntityInput(field, label) {
+    const inputLabel = document.createElement("label");
+    inputLabel.textContent = label;
+    const input = document.createElement("input");
+    input.type = "text";
+    input.value = this._config[field] || "";
+    input.addEventListener("change", () => {
+      const value = input.value.trim();
+      if (!value) {
+        const newConfig = { ...this._config };
+        delete newConfig[field];
+        this._dispatchConfigChanged(newConfig);
+        return;
+      }
+      this._updateConfig({ [field]: value });
+    });
+    inputLabel.appendChild(input);
+    return inputLabel;
+  }
+
+  _updateEntityPickers() {
+    if (!this._hass) {
+      return;
+    }
+    const inputs = this.querySelectorAll("input[type='text']");
+    inputs.forEach((input) => {
+      if (!input.hasAttribute("list")) {
+        const datalistId = "google-maps-car-card-cadu-entities";
+        input.setAttribute("list", datalistId);
+      }
+    });
+    if (!this.querySelector("#google-maps-car-card-cadu-entities")) {
+      const datalist = document.createElement("datalist");
+      datalist.id = "google-maps-car-card-cadu-entities";
+      Object.keys(this._hass.states).forEach((entityId) => {
+        const option = document.createElement("option");
+        option.value = entityId;
+        datalist.appendChild(option);
+      });
+      this.appendChild(datalist);
+    }
+  }
+
+  _updateConfig(changes) {
+    const newConfig = { ...this._config, ...changes };
+    this._dispatchConfigChanged(newConfig);
+  }
+
+  _dispatchConfigChanged(config) {
+    this._config = config;
+    this.dispatchEvent(
+      new CustomEvent("config-changed", {
+        detail: { config },
+        bubbles: true,
+        composed: true,
+      })
+    );
+  }
+}
+
+customElements.define("google-maps-car-card-cadu", GoogleMapsCarCardCadu);
+customElements.define("google-maps-car-card-cadu-editor", GoogleMapsCarCardCaduEditor);
+
+GoogleMapsCarCardCadu.getConfigElement = function () {
+  return document.createElement("google-maps-car-card-cadu-editor");
+};
+
+GoogleMapsCarCardCadu.getStubConfig = function () {
+  return {
+    api_key: "",
+    follow_entity: "",
+    entities: [],
+  };
+};
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "google-maps-card-cadu1",
-  name: "Google Maps Card Cadu1",
+  type: "google-maps-car-card-cadu",
+  name: "Google Maps Car Card Cadu",
   description: "Exibe dispositivos no Google Maps com InfoBox personalizado.",
 });

@@ -1,4 +1,4 @@
-# Google Maps Card Cadu1
+# Google Maps Car Card Cadu
 
 Cartao customizado do Home Assistant para exibir entidades no Google Maps com caixas de informacao, direcao e velocidade.
 
@@ -9,13 +9,13 @@ Cartao customizado do Home Assistant para exibir entidades no Google Maps com ca
 3. Adicione o recurso no Lovelace em **Configuracao > Painel > Recursos**:
 
 ```
-/url/google-maps-card-cadu1.js
+/url/google-maps-car-card-cadu.js
 ```
 
 ## Configuracao
 
 ```yaml
-type: "custom:google-maps-card-cadu1"
+type: "custom:google-maps-car-card-cadu"
 api_key: "SUA_GOOGLE_MAPS_API_KEY"
 follow_entity: input_boolean.seguir_mapa
 entities:
@@ -40,4 +40,4 @@ entities:
 
 ## Desenvolvimento
 
-O arquivo principal do cartao fica em `google-maps-card-cadu1.js`.
+O arquivo principal do cartao fica em `google-maps-car-card-cadu.js`.
