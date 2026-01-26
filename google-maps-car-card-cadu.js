@@ -8,34 +8,62 @@ const ENTITY_FIELD_ORDER = [
 ];
 
 function normalizeEntityConfig(entityConfig) {
-  if (!entityConfig || typeof entityConfig !== "object") {
+  if (!entityConfig || typeof entityConfig !== "object" || Array.isArray(entityConfig)) {
     return entityConfig;
   }
-  const numericKeys = Object.keys(entityConfig).filter((key) => /^\d+$/.test(key));
-  if (numericKeys.length === 0) {
+  
+  try {
+    const numericKeys = Object.keys(entityConfig).filter((key) => /^\d+$/.test(key));
+    if (numericKeys.length === 0) {
+      return entityConfig;
+    }
+    
+    // Criar novo objeto normalizado, preservando campos nomeados existentes
+    const normalized = {};
+    
+    // Primeiro, copiar campos nomeados existentes
+    Object.keys(entityConfig).forEach((key) => {
+      if (!/^\d+$/.test(key)) {
+        normalized[key] = entityConfig[key];
+      }
+    });
+    
+    // Depois, converter chaves numéricas para campos nomeados
+    numericKeys.forEach((key) => {
+      const index = Number(key);
+      if (isNaN(index) || index < 0 || index >= ENTITY_FIELD_ORDER.length) {
+        return;
+      }
+      const fieldName = ENTITY_FIELD_ORDER[index];
+      if (fieldName) {
+        // Só sobrescreve se o campo nomeado não existir ou estiver vazio
+        if (normalized[fieldName] === undefined || normalized[fieldName] === null || normalized[fieldName] === "") {
+          normalized[fieldName] = entityConfig[key];
+        }
+      }
+    });
+    
+    return normalized;
+  } catch (error) {
+    console.error("Erro ao normalizar entidade:", error, entityConfig);
     return entityConfig;
   }
-  const normalized = { ...entityConfig };
-  numericKeys.forEach((key) => {
-    const index = Number(key);
-    const fieldName = ENTITY_FIELD_ORDER[index];
-    if (!fieldName) {
-      delete normalized[key];
-      return;
-    }
-    if (normalized[fieldName] === undefined) {
-      normalized[fieldName] = entityConfig[key];
-    }
-    delete normalized[key];
-  });
-  return normalized;
 }
 
 function normalizeEntitiesConfig(entities) {
   if (!Array.isArray(entities)) {
     return [];
   }
-  return entities.map((entityConfig) => normalizeEntityConfig(entityConfig));
+  return entities
+    .filter((entityConfig) => entityConfig && typeof entityConfig === "object")
+    .map((entityConfig) => {
+      try {
+        return normalizeEntityConfig(entityConfig);
+      } catch (error) {
+        console.error("Erro ao normalizar entidade:", error, entityConfig);
+        return entityConfig;
+      }
+    });
 }
 
 class GoogleMapsCarCardCadu extends HTMLElement {
@@ -557,16 +585,31 @@ class GoogleMapsCarCardCadu extends HTMLElement {
 }
 
 class GoogleMapsCarCardCaduEditor extends HTMLElement {
+  constructor() {
+    super();
+    this._updating = false;
+  }
+
   setConfig(config) {
-    this._config = this._normalizeConfig(config);
-    this._render();
+    try {
+      // Normalizar configuração ao receber
+      this._config = this._normalizeConfig(config || {});
+      if (this._rendered) {
+        this._syncFormData();
+      } else {
+        this._render();
+      }
+    } catch (error) {
+      console.error("Erro ao definir configuração:", error);
+      this._config = config || {};
+    }
   }
 
   set hass(hass) {
     this._hass = hass;
-    if (this._rendered) {
+    if (this._rendered && !this._updating) {
       this._syncFormData();
-    } else if (this._config) {
+    } else if (!this._rendered && this._config) {
       this._render();
     }
   }
@@ -576,20 +619,40 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
     this.innerHTML = "";
     const form = document.createElement("ha-form");
     form.hass = this._hass;
-    form.data = { ...this._config };
+    // Garantir que os dados estão normalizados antes de passar para o form
+    const normalizedConfig = this._normalizeConfig(this._config || {});
+    form.data = { ...normalizedConfig };
     form.schema = this._buildSchema();
     form.computeLabel = (schema) => schema.label || schema.name;
     form.addEventListener("value-changed", (event) => {
-      this._dispatchConfigChanged(this._normalizeConfig(event.detail.value));
+      if (!this._updating) {
+        try {
+          this._updating = true;
+          this._dispatchConfigChanged(event.detail.value);
+        } catch (error) {
+          console.error("Erro ao processar mudança de valor:", error);
+        } finally {
+          // Usar setTimeout para garantir que o evento seja processado antes de resetar
+          setTimeout(() => {
+            this._updating = false;
+          }, 100);
+        }
+      }
     });
     this.appendChild(form);
     this._form = form;
   }
 
   _syncFormData() {
-    if (this._form) {
-      this._form.hass = this._hass;
-      this._form.data = { ...this._normalizeConfig(this._config) };
+    if (this._form && !this._updating) {
+      try {
+        this._form.hass = this._hass;
+        // Normalizar configuração antes de sincronizar com o form
+        const normalizedConfig = this._normalizeConfig(this._config || {});
+        this._form.data = { ...normalizedConfig };
+      } catch (error) {
+        console.error("Erro ao sincronizar dados do form:", error);
+      }
     }
   }
 
@@ -662,21 +725,50 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
   }
 
   _normalizeConfig(config) {
-    return {
-      ...config,
-      entities: normalizeEntitiesConfig(config?.entities),
-    };
+    if (!config || typeof config !== "object") {
+      return { entities: [] };
+    }
+    try {
+      return {
+        ...config,
+        entities: normalizeEntitiesConfig(config.entities),
+      };
+    } catch (error) {
+      console.error("Erro ao normalizar configuração:", error);
+      return {
+        ...config,
+        entities: Array.isArray(config.entities) ? config.entities : [],
+      };
+    }
   }
 
   _dispatchConfigChanged(config) {
-    this._config = config;
-    this.dispatchEvent(
-      new CustomEvent("config-changed", {
-        detail: { config },
-        bubbles: true,
-        composed: true,
-      })
-    );
+    if (!config || typeof config !== "object") {
+      return;
+    }
+    try {
+      // Garantir que a configuração está normalizada antes de salvar
+      const normalizedConfig = this._normalizeConfig(config);
+      this._config = normalizedConfig;
+      this.dispatchEvent(
+        new CustomEvent("config-changed", {
+          detail: { config: normalizedConfig },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    } catch (error) {
+      console.error("Erro ao despachar mudança de configuração:", error);
+      // Em caso de erro, ainda tenta salvar a configuração original
+      this._config = config;
+      this.dispatchEvent(
+        new CustomEvent("config-changed", {
+          detail: { config },
+          bubbles: true,
+          composed: true,
+        })
+      );
+    }
   }
 }
 
