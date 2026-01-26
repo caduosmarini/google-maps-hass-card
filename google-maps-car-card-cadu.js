@@ -81,6 +81,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     this._uiState = {
       trafficEnabled: false,
       nightModeEnabled: false,
+      followEnabled: false,
       entityVisibility: {},
     };
   }
@@ -95,16 +96,19 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.entities || !config.api_key || !config.follow_entity) {
+    if (!config.entities || !config.api_key) {
       throw new Error("Configuracao invalida");
     }
     this._config = {
       ...config,
       transito: typeof config.transito === "string" ? config.transito : null,
       modo_noturno: typeof config.modo_noturno === "string" ? config.modo_noturno : null,
+      follow_entity:
+        typeof config.follow_entity === "string" ? config.follow_entity : null,
     };
     this._uiState.trafficEnabled = false;
     this._uiState.nightModeEnabled = false;
+    this._uiState.followEnabled = false;
     this._initializeEntityVisibility();
     if (!window.google || !window.google.maps) {
       const script = document.createElement("script");
@@ -154,8 +158,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
   }
 
   _shouldFollow() {
-    const followEntity = this._hass.states[this._config.follow_entity];
-    return followEntity && followEntity.state === "on";
+    if (this._config.follow_entity) {
+      const followEntity = this._hass.states[this._config.follow_entity];
+      return followEntity && followEntity.state === "on";
+    }
+    return this._uiState.followEnabled;
   }
 
   _applyNightMode() {
@@ -386,6 +393,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     const hasUiTraffic = !this._config.transito || typeof this._config.transito !== "string";
     const hasUiNightMode =
       !this._config.modo_noturno || typeof this._config.modo_noturno !== "string";
+    const hasUiFollow =
+      !this._config.follow_entity || typeof this._config.follow_entity !== "string";
 
     if (hasUiTraffic) {
       const trafficLabel = document.createElement("label");
@@ -413,6 +422,22 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       nightLabel.appendChild(nightCheckbox);
       nightLabel.appendChild(document.createTextNode("Modo noturno"));
       this.controlsContainer.appendChild(nightLabel);
+    }
+
+    if (hasUiFollow) {
+      const followLabel = document.createElement("label");
+      const followCheckbox = document.createElement("input");
+      followCheckbox.type = "checkbox";
+      followCheckbox.checked = this._uiState.followEnabled;
+      followCheckbox.addEventListener("change", () => {
+        this._uiState.followEnabled = followCheckbox.checked;
+        if (this._shouldFollow()) {
+          this._fitMapBounds();
+        }
+      });
+      followLabel.appendChild(followCheckbox);
+      followLabel.appendChild(document.createTextNode("Seguir"));
+      this.controlsContainer.appendChild(followLabel);
     }
 
     this._config.entities.forEach((entityConfig) => {
@@ -528,8 +553,7 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
       },
       {
         name: "follow_entity",
-        label: "Entidade para seguir (booleana)",
-        required: true,
+        label: "Entidade para seguir (booleana, opcional)",
         selector: { entity: { domain: "input_boolean" } },
       },
       {
