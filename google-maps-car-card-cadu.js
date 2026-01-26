@@ -732,7 +732,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         const div = this.div_;
         
         let xOffset = 0;
-        let yOffset = -45; // Padrão: 35px acima (Up) do centro
+        let yOffset = -55; // Padrão: 35px acima (Up) do centro
         
         // Se rotação ativada, calcular posição relativa ao "teto" do carro
         if (shouldRotate && rotation !== 999) {
