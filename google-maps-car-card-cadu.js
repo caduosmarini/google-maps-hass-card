@@ -303,6 +303,9 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         mostrar_tela_cheia: this._config.mostrar_tela_cheia !== false,
         mostrar_controles_navegacao: this._config.mostrar_controles_navegacao !== false,
         ocultar_creditos: this._config.ocultar_creditos === true,
+        transito_on: this._config.transito_on === true,
+        modo_noturno_on: this._config.modo_noturno_on === true,
+        seguir_on: this._config.seguir_on === true,
       };
       
       // Carregar estado salvo do localStorage antes de inicializar valores padrão
@@ -332,6 +335,19 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       }
       if (this._uiState.arrowEnabled === undefined) {
         this._uiState.arrowEnabled = true;
+      }
+
+      // Se o menu estiver oculto e não houver entidade, permite configurar via YAML
+      if (this._config.mostrar_menu === false) {
+        if (!this._config.transito) {
+          this._uiState.trafficEnabled = this._config.transito_on === true;
+        }
+        if (!this._config.modo_noturno) {
+          this._uiState.nightModeEnabled = this._config.modo_noturno_on === true;
+        }
+        if (!this._config.follow_entity) {
+          this._uiState.followEnabled = this._config.seguir_on === true;
+        }
       }
       this._initializeEntityVisibility();
       
@@ -463,6 +479,9 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         return followEntity && followEntity.state === "on";
       }
     }
+    if (this._config.mostrar_menu === false && !this._config.follow_entity) {
+      return this._config.seguir_on === true;
+    }
     return this._uiState.followEnabled;
   }
 
@@ -550,6 +569,12 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       !this._uiState.nightModeOverride
     ) {
       nightMode = this._hass.states[configNightMode]?.state === "on";
+    } else if (
+      !configNightMode &&
+      this._config.mostrar_menu === false &&
+      this._config.modo_noturno_on === true
+    ) {
+      nightMode = true;
     }
     this._map.setOptions({
       styles: nightMode ? nightModeStyle : [],
@@ -567,6 +592,12 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       !this._uiState.trafficOverride
     ) {
       trafficEnabled = this._hass.states[configTraffic]?.state === "on";
+    } else if (
+      !configTraffic &&
+      this._config.mostrar_menu === false &&
+      this._config.transito_on === true
+    ) {
+      trafficEnabled = true;
     }
     if (trafficEnabled) {
       this.trafficLayer.setMap(this._map);
@@ -1158,6 +1189,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
     formData.mostrar_tela_cheia = formData.mostrar_tela_cheia !== false;
     formData.mostrar_controles_navegacao = formData.mostrar_controles_navegacao !== false;
     formData.ocultar_creditos = formData.ocultar_creditos === true;
+    formData.transito_on = formData.transito_on === true;
+    formData.modo_noturno_on = formData.modo_noturno_on === true;
+    formData.seguir_on = formData.seguir_on === true;
     formData.max_height = formData.max_height || null;
     formData.max_width = formData.max_width || null;
     formData.entities = formData.entities || [];
@@ -1244,6 +1278,11 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         selector: { entity: { domain: "input_boolean" } },
       },
       {
+        name: "transito_on",
+        label: "Transito ligado (sem entidade)",
+        selector: { boolean: {} },
+      },
+      {
         name: "mostrar_menu",
         label: "Mostrar menu superior (opcional)",
         selector: { boolean: {} },
@@ -1266,6 +1305,16 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
       {
         name: "ocultar_creditos",
         label: "Ocultar créditos/termos do mapa (opcional)",
+        selector: { boolean: {} },
+      },
+      {
+        name: "modo_noturno_on",
+        label: "Modo noturno ligado (sem entidade)",
+        selector: { boolean: {} },
+      },
+      {
+        name: "seguir_on",
+        label: "Seguir ligado (sem entidade)",
         selector: { boolean: {} },
       },
       {
@@ -1362,6 +1411,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         mostrar_tela_cheia: config.mostrar_tela_cheia !== false,
         mostrar_controles_navegacao: config.mostrar_controles_navegacao !== false,
         ocultar_creditos: config.ocultar_creditos === true,
+        transito_on: config.transito_on === true,
+        modo_noturno_on: config.modo_noturno_on === true,
+        seguir_on: config.seguir_on === true,
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: normalizedEntities,
@@ -1388,6 +1440,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         mostrar_tela_cheia: config.mostrar_tela_cheia !== false,
         mostrar_controles_navegacao: config.mostrar_controles_navegacao !== false,
         ocultar_creditos: config.ocultar_creditos === true,
+        transito_on: config.transito_on === true,
+        modo_noturno_on: config.modo_noturno_on === true,
+        seguir_on: config.seguir_on === true,
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: Array.isArray(config.entities) ? config.entities : [],
