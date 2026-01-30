@@ -74,7 +74,7 @@ grid_options:
   - `rastro_duracao_min`: (Opcional) Duracao do rastro em minutos. Padrao: `60`.
   - `rastro_pontos_por_min`: (Opcional) Limite de pontos por minuto. Padrao: `10`.
   - `rastro_max_pontos`: (Opcional) Limite maximo de pontos armazenados. Padrao: `600`.
-  - `rastro_cor`: (Opcional) Cor do rastro (hex). Padrao: `#00aaff`.
+  - `rastro_cor`: (Opcional) Cor do rastro (hex ou RGB). Padrao: `#00aaff`.
   - `velocidade`: Sensor de velocidade para mostrar na caixa de info.
   - `altitude`: Sensor de altitude para mostrar na caixa de info.
 

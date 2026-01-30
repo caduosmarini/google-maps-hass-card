@@ -336,13 +336,11 @@ class GoogleMapsCarCardCadu extends HTMLElement {
             }
           });
         }
+        points.sort((a, b) => a.ts - b.ts);
         this.trails[entityId] = points;
-        if (points.length >= 2) {
+        const rotation = this._findLastSignificantRotation(points);
+        if (rotation !== null) {
           const last = points[points.length - 1];
-          const prev = points[points.length - 2];
-          const deltaX = last.lng - prev.lng;
-          const deltaY = last.lat - prev.lat;
-          const rotation = Math.atan2(deltaY, deltaX) * (180 / Math.PI);
           this.lastPositions[entityId] = {
             lat: last.lat,
             lng: last.lng,
@@ -365,11 +363,38 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       maxPerMin: Number.isFinite(entityConfig.rastro_pontos_por_min)
         ? entityConfig.rastro_pontos_por_min
         : 10,
-      color: entityConfig.rastro_cor || "#00aaff",
+      color: this._normalizeTrailColor(entityConfig.rastro_cor),
       maxPoints: Number.isFinite(entityConfig.rastro_max_pontos)
         ? entityConfig.rastro_max_pontos
         : 600,
     };
+  }
+
+  _normalizeTrailColor(colorValue) {
+    if (Array.isArray(colorValue) && colorValue.length >= 3) {
+      const [r, g, b] = colorValue;
+      const toHex = (v) =>
+        Math.max(0, Math.min(255, Number(v) || 0)).toString(16).padStart(2, "0");
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+    }
+    if (typeof colorValue === "string" && colorValue.trim() !== "") {
+      return colorValue.trim();
+    }
+    return "#00aaff";
+  }
+
+  _findLastSignificantRotation(points) {
+    if (!Array.isArray(points) || points.length < 2) return null;
+    for (let i = points.length - 1; i > 0; i -= 1) {
+      const last = points[i];
+      const prev = points[i - 1];
+      const deltaX = last.lng - prev.lng;
+      const deltaY = last.lat - prev.lat;
+      if (Math.abs(deltaX) > 0.00001 || Math.abs(deltaY) > 0.00001) {
+        return Math.atan2(deltaY, deltaX) * (180 / Math.PI);
+      }
+    }
+    return null;
   }
 
   _pruneTrail(points, durationMs, maxPoints) {
@@ -437,6 +462,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     const total = points.length - 1;
     for (let i = 1; i < points.length; i++) {
       const ratio = i / total;
+      // Mais forte no mais antigo, mais fraco no recente
       const opacity = minOpacity + (1 - ratio) * (maxOpacity - minOpacity);
       const segment = new google.maps.Polyline({
         path: [
@@ -1602,8 +1628,8 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
                 selector: { number: { min: 10, max: 10000, step: 10 } },
               },
               rastro_cor: {
-                label: "Rastro: cor (hex, opcional)",
-                selector: { text: {} },
+                label: "Rastro: cor (opcional)",
+                selector: { color_rgb: {} },
               },
               velocidade: {
                 label: "Sensor de velocidade (opcional)",
