@@ -128,6 +128,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     
     const widthStyle = maxWidth ? `max-width: ${maxWidth}px;` : "";
     
+    const showTopControls = this._config?.mostrar_menu !== false;
+
     this._styleElement.textContent = `
       :host {
         display: block;
@@ -174,6 +176,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       }
       .map-controls {
         display: flex;
+        ${showTopControls ? "" : "display: none;"}
         flex-wrap: wrap;
         gap: 8px;
         background: rgba(0, 0, 0, 0.7);
@@ -254,6 +257,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     this._hass = hass;
     if (this._map && this._config) {
       this._updateMap();
+      this._applyMapTypeOptions();
       this._applyNightMode();
       this._toggleTrafficLayer();
     }
@@ -277,6 +281,9 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         follow_entity:
           typeof this._config.follow_entity === "string" ? this._config.follow_entity : null,
         rotate_image: this._config.rotate_image === true,
+        mostrar_menu: this._config.mostrar_menu !== false,
+        mostrar_tipo_mapa: this._config.mostrar_tipo_mapa !== false,
+        tipo_mapa: typeof this._config.tipo_mapa === "string" ? this._config.tipo_mapa : "roadmap",
       };
       
       // Carregar estado salvo do localStorage antes de inicializar valores padrão
@@ -311,6 +318,7 @@ class GoogleMapsCarCardCadu extends HTMLElement {
         requestAnimationFrame(() => {
           this._applyNightMode();
           this._toggleTrafficLayer();
+          this._applyMapTypeOptions();
         });
       }
       
@@ -355,6 +363,14 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     }
   }
 
+  _applyMapTypeOptions() {
+    if (!this._map) return;
+    this._map.setOptions({
+      mapTypeId: this._config.tipo_mapa || "roadmap",
+      mapTypeControl: this._config.mostrar_tipo_mapa !== false,
+    });
+  }
+
   getCardSize() {
     return 6;
   }
@@ -366,6 +382,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
       center: { lat: -30.0277, lng: -51.2287 }, // Exemplo inicial, sera ajustado
       zoom: 17, // Zoom inicial
       streetViewControl: false, // Desabilita o controle de Street View
+      mapTypeControl: this._config.mostrar_tipo_mapa !== false,
+      mapTypeId: this._config.tipo_mapa || "roadmap",
     });
     this._renderControls();
     // Aplicar modo noturno após renderizar controles para garantir que o estado está carregado
@@ -799,6 +817,10 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     if (!this.controlsContainer) return;
     this.controlsContainer.innerHTML = "";
 
+    if (this._config.mostrar_menu === false) {
+      return;
+    }
+
     const hasUiTraffic = !this._config.transito || typeof this._config.transito !== "string";
     const hasUiNightMode =
       !this._config.modo_noturno || typeof this._config.modo_noturno !== "string";
@@ -1065,6 +1087,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
     formData.follow_entity = formData.follow_entity || "";
     formData.modo_noturno = formData.modo_noturno || "";
     formData.transito = formData.transito || "";
+    formData.mostrar_menu = formData.mostrar_menu !== false;
+    formData.mostrar_tipo_mapa = formData.mostrar_tipo_mapa !== false;
+    formData.tipo_mapa = formData.tipo_mapa || "roadmap";
     formData.max_height = formData.max_height || null;
     formData.max_width = formData.max_width || null;
     formData.entities = formData.entities || [];
@@ -1151,6 +1176,30 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         selector: { entity: { domain: "input_boolean" } },
       },
       {
+        name: "mostrar_menu",
+        label: "Mostrar menu superior (opcional)",
+        selector: { boolean: {} },
+      },
+      {
+        name: "mostrar_tipo_mapa",
+        label: "Mostrar botões Mapa/Satélite (opcional)",
+        selector: { boolean: {} },
+      },
+      {
+        name: "tipo_mapa",
+        label: "Tipo de mapa (opcional)",
+        selector: {
+          select: {
+            options: [
+              { label: "Mapa", value: "roadmap" },
+              { label: "Satélite", value: "satellite" },
+              { label: "Híbrido", value: "hybrid" },
+              { label: "Terreno", value: "terrain" },
+            ],
+          },
+        },
+      },
+      {
         name: "max_height",
         label: "Altura máxima do mapa em pixels (opcional)",
         selector: { number: { min: 100, max: 2000, step: 10, unit_of_measurement: "px" } },
@@ -1224,6 +1273,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         follow_entity: config.follow_entity || "",
         modo_noturno: config.modo_noturno || "",
         transito: config.transito || "",
+        mostrar_menu: config.mostrar_menu !== false,
+        mostrar_tipo_mapa: config.mostrar_tipo_mapa !== false,
+        tipo_mapa: config.tipo_mapa || "roadmap",
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: normalizedEntities,
@@ -1244,6 +1296,9 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
         follow_entity: config.follow_entity || "",
         modo_noturno: config.modo_noturno || "",
         transito: config.transito || "",
+        mostrar_menu: config.mostrar_menu !== false,
+        mostrar_tipo_mapa: config.mostrar_tipo_mapa !== false,
+        tipo_mapa: config.tipo_mapa || "roadmap",
         max_height: config.max_height || null,
         max_width: config.max_width || null,
         entities: Array.isArray(config.entities) ? config.entities : [],

@@ -21,6 +21,7 @@ follow_entity: input_boolean.seguir_mapa
 entities:
   - entity: person.meu_dispositivo
     image: /local/imagens/carro.png
+    image_rotated: /local/imagens/carro_rot.png
     velocidade: sensor.velocidade_dispositivo
     altitude: sensor.altitude_dispositivo
 ```
@@ -50,12 +51,21 @@ grid_options:
 - `follow_entity`: Entidade booleana que, quando ligada, ajusta/centraliza o mapa.
 - `modo_noturno`: (Opcional) Entidade booleana para aplicar o estilo noturno. Se nao definido, o cartao mostra um toggle na interface.
 - `transito`: (Opcional) Entidade booleana para mostrar a camada de transito. Se nao definido, o cartao mostra um toggle na interface.
+- `mostrar_menu`: (Opcional) Exibe/oculta o menu superior do cartao. Padrao: `true`.
+- `mostrar_tipo_mapa`: (Opcional) Exibe/oculta os botoes Mapa/Satelite. Padrao: `true`.
+- `tipo_mapa`: (Opcional) Tipo inicial do mapa. Valores: `roadmap`, `satellite`, `hybrid`, `terrain`. Padrao: `roadmap`.
 - `entities`: Lista de entidades para exibir.
   - `entity`: Entidade com latitude/longitude.
   - `condition`: (Opcional) Entidade booleana que controla se o marcador aparece. Se nao definido, o cartao mostra um toggle na interface.
   - `image`: URL/arquivo local para o icone do marcador (opcional).
+  - `image_rotated`: URL/arquivo local para o icone quando a rotacao estiver ativada (opcional).
   - `velocidade`: Sensor de velocidade para mostrar na caixa de info.
   - `altitude`: Sensor de altitude para mostrar na caixa de info.
+
+### Controles na interface
+
+- **Rotacao**: Ativa/desativa a rotacao do marcador.
+- **Seta**: Exibe/oculta a seta de direcao na caixa de info (mantem velocidade/altitude).
 
 ## Desenvolvimento
 
