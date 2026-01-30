@@ -1,0 +1,7 @@
+---
+alwaysApply: true
+---
+
+O projeto é um card para o Home Assistant.
+Sempre colocar as configurações do yaml também na UI.
+Sempre atualizar o readme.md

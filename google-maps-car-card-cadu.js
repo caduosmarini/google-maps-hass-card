@@ -140,6 +140,8 @@ class GoogleMapsCarCardCadu extends HTMLElement {
     this.lastPositions = {}; // Armazena a ultima posicao de cada entidade
     this.trails = {}; // Armazena rastro por entidade
     this.trailPolylines = {}; // Armazena polylines do rastro por entidade
+    this._lastMapTypeOptions = null;
+    this._lastMapControlsOptions = null;
     this._uiState = {
       trafficEnabled: false,
       nightModeEnabled: false,
@@ -597,17 +599,27 @@ class GoogleMapsCarCardCadu extends HTMLElement {
 
   _applyMapTypeOptions() {
     if (!this._map) return;
+    const mapTypeId = this._config.tipo_mapa || "roadmap";
+    const mapTypeControl = this._config.mostrar_tipo_mapa !== false;
+    const key = `${mapTypeId}|${mapTypeControl}`;
+    if (this._lastMapTypeOptions === key) return;
+    this._lastMapTypeOptions = key;
     this._map.setOptions({
-      mapTypeId: this._config.tipo_mapa || "roadmap",
-      mapTypeControl: this._config.mostrar_tipo_mapa !== false,
+      mapTypeId,
+      mapTypeControl,
     });
   }
 
   _applyMapControlsOptions() {
     if (!this._map) return;
+    const fullscreenControl = this._config.mostrar_tela_cheia !== false;
+    const zoomControl = this._config.mostrar_controles_navegacao !== false;
+    const key = `${fullscreenControl}|${zoomControl}`;
+    if (this._lastMapControlsOptions === key) return;
+    this._lastMapControlsOptions = key;
     this._map.setOptions({
-      fullscreenControl: this._config.mostrar_tela_cheia !== false,
-      zoomControl: this._config.mostrar_controles_navegacao !== false,
+      fullscreenControl,
+      zoomControl,
     });
   }
 
@@ -1564,6 +1576,26 @@ class GoogleMapsCarCardCaduEditor extends HTMLElement {
               },
               image_rotated: {
                 label: "Imagem Rotacionada (opcional, beta)",
+                selector: { text: {} },
+              },
+              rastro: {
+                label: "Rastro (opcional)",
+                selector: { boolean: {} },
+              },
+              rastro_duracao_min: {
+                label: "Rastro: duração em minutos (opcional)",
+                selector: { number: { min: 1, max: 1440, step: 1, unit_of_measurement: "min" } },
+              },
+              rastro_pontos_por_min: {
+                label: "Rastro: pontos por minuto (opcional)",
+                selector: { number: { min: 1, max: 120, step: 1 } },
+              },
+              rastro_max_pontos: {
+                label: "Rastro: máximo de pontos (opcional)",
+                selector: { number: { min: 10, max: 10000, step: 10 } },
+              },
+              rastro_cor: {
+                label: "Rastro: cor (hex, opcional)",
                 selector: { text: {} },
               },
               velocidade: {
